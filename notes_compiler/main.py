@@ -257,7 +257,7 @@ class MarkdownTreeProcessor:
     def _sync_directories(self, tree: MarkdownTreeNode):
         full_path = f"{self.output_path}/{tree.path_from_root()}"
         if not os.path.exists(full_path):
-            os.mkdir(full_path)
+            os.makedirs(full_path)
         for child in tree.children:
             self._sync_directories(child)
 
