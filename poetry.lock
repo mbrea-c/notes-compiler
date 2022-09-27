@@ -40,6 +40,24 @@ python-versions = ">=3.7"
 testing = ["coverage", "pyyaml"]
 
 [[package]]
+name = "markdown-graphviz"
+version = "0.1.0"
+description = ""
+category = "main"
+optional = false
+python-versions = "^3.10"
+develop = false
+
+[package.dependencies]
+Markdown = "^3.4.1"
+
+[package.source]
+type = "git"
+url = "https://github.com/mbrea-c/markdown-inline-graphviz.git"
+reference = "89c7298f51b530604f9ce9a366a35c6a78fe69d8"
+resolved_reference = "89c7298f51b530604f9ce9a366a35c6a78fe69d8"
+
+[[package]]
 name = "markdown-katex"
 version = "202112.1034"
 description = "katex extension for Python Markdown"
@@ -152,13 +170,14 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "e3fc1b1d2494a80ad2476bc2613abf8811a5a56fcc56dec12a521fdb653f838f"
+content-hash = "d20dc05fe11f7c7ee42cb00f176e4915f212feed6487ab71d0fa08dee1e06e6f"
 
 [metadata.files]
 atomicwrites = []
 attrs = []
 colorama = []
 markdown = []
+markdown-graphviz = []
 markdown-katex = []
 more-itertools = []
 packaging = [

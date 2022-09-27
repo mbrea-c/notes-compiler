@@ -12,6 +12,7 @@ notes = "notes_compiler.main:main"
 python = "^3.10"
 Markdown = "^3.4.1"
 markdown-katex = "^202112.1034"
+markdown-graphviz = { git = "https://github.com/mbrea-c/markdown-inline-graphviz.git", rev = "89c7298f51b530604f9ce9a366a35c6a78fe69d8" }
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
