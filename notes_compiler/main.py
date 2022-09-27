@@ -82,7 +82,9 @@ class HtmlPage:
     @staticmethod
     def _compile_markdown(md: str) -> str:
         return markdown.markdown(
-            md, tab_length=2, extensions=[KatexExtension(), "markdown_graphviz"]
+            md,
+            tab_length=2,
+            extensions=[KatexExtension(), "python3_markdown_extension_graphviz"],
         )
 
     def build_page(self) -> str:
@@ -307,7 +309,10 @@ class MarkdownTreeProcessor:
             toc_str += "</ul>"
             return toc_str
 
-        toc_str = f"<h1>{snake_case_to_title_case(tree.name) if tree.name else 'Table of Contents'}</h1>\n" + make_toc(tree, tree)
+        toc_str = (
+            f"<h1>{snake_case_to_title_case(tree.name) if tree.name else 'Table of Contents'}</h1>\n"
+            + make_toc(tree, tree)
+        )
 
         return toc_str
 
