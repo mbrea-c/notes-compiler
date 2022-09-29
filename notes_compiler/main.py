@@ -1,7 +1,8 @@
 import argparse
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Self
 from pathlib import Path
 import markdown
+from markdown.extensions.codehilite import CodeHiliteExtension
 from functools import reduce
 from markdown_katex import KatexExtension
 import os
@@ -17,21 +18,20 @@ class Config:
     def __init__(self, config: Dict):
         self.config = config
 
-    @staticmethod
-    def from_json(filename: str):
-        logging.info(f"Loading configuration from JSON file: {filename}")
+    @classmethod
+    def from_json(cls, json_text: str) -> Self:
+        return cls.default().merge_with(cls(json.loads(json_text)))
+
+    @classmethod
+    def from_json_file(cls, filename: str) -> Self:
         with open(filename, "r") as file:
-            return Config.builtin().merge_with(Config(json.loads(file.read())))
+            return cls.default().merge_with(cls(json.loads(file.read())))
 
-    @staticmethod
-    def default():
-        return Config.builtin().merge_with(Config({"css": ["custom_style.css"]}))
+    @classmethod
+    def default(cls) -> Self:
+        raise NotImplementedError()
 
-    @staticmethod
-    def builtin():
-        return Config({"css": ["header.css"]})
-
-    def merge_with(self, other: "Config"):
+    def merge_with(self, other: Self) -> Self:
         def merge_configs(source, destination):
             for key, value in source.items():
                 if isinstance(value, dict):
@@ -56,6 +56,30 @@ class Config:
             return self.config[name]
         else:
             raise AttributeError(name)
+
+
+class ProjectConfig(Config):
+    @classmethod
+    def default(cls) -> Self:
+        return cls(
+            {
+                "css": ["header.css", "custom_style.css"],
+                "root": ".",
+                "src_root": "src",
+                "public_root": "public",
+            }
+        )
+
+    @classmethod
+    def from_json_file(cls, filename: str) -> Self:
+        root = os.path.dirname(os.path.abspath(filename))
+        return super().from_json_file(filename).merge_with(cls({"root": root}))
+
+
+class FolderConfig(Config):
+    @classmethod
+    def default(cls) -> Self:
+        return cls({"build_index": False})
 
 
 class HtmlPage:
@@ -84,7 +108,11 @@ class HtmlPage:
         return markdown.markdown(
             md,
             tab_length=2,
-            extensions=[KatexExtension(), "python3_markdown_extension_graphviz"],
+            extensions=[
+                CodeHiliteExtension(),
+                KatexExtension(),
+                "python3_markdown_extension_graphviz",
+            ],
         )
 
     def build_page(self) -> str:
@@ -110,15 +138,16 @@ class HtmlPage:
         return f"{self.parent.path_to_root()}/{page.parent.path_from_root()}/{page.name}.html"
 
     def _get_header(self):
-        if self.name != "index":
-            linked_index = self.parent.content["index"]["page"]
-        elif self.parent.parent != None:
-            linked_index = self.parent.parent.content["index"]["page"]
-        else:
-            linked_index = None
+        node = self.parent
+        linked_index = None
+        if self.name == "index":
+            node = node.parent
+        while node is not None and linked_index is None:
+            linked_index = node.content["index"]
+            node = node.parent
         return f"""
             {f'<a class="link-before" href={self._get_link_to_page(self.page_before)}><small>&#9664; {snake_case_to_title_case(self.page_before.name)}</small></a>' if self.page_before else '<div class="link-before"></div>'}
-            {f'<a class="link-index" href={self._get_link_to_page(linked_index)}><small>To Index</small></a>' if linked_index else '<div class="link-index"></div>'}
+            {f'<a class="link-index" href={self._get_link_to_page(linked_index["page"])}><small>To Index</small></a>' if linked_index else '<div class="link-index"></div>'}
             {f'<a class="link-after" href={self._get_link_to_page(self.page_after)}><small>{snake_case_to_title_case(self.page_after.name)} &#9654;</small></a>' if self.page_after else '<div class="link-after"></div>'}
 """
 
@@ -132,6 +161,7 @@ class MarkdownTreeNode:
     parent: Optional["MarkdownTreeNode"] = None
     children: List["MarkdownTreeNode"] = field(default_factory=list)
     content: Dict = field(default_factory=dict)
+    folder_config: FolderConfig = field(default_factory=FolderConfig.default)
 
     def path_from_root(self):
         if self.parent is None:
@@ -145,19 +175,42 @@ class MarkdownTreeNode:
         else:
             return f"../{self.parent.path_to_root()}"
 
+    def _print_with_depth(self, d: int = 0) -> str:
+        str_repr = f"{'├──' if d else ''}{'───' * max(d - 1, 0)}{self.name}\n"
+        for child in self.children:
+            str_repr += child._print_with_depth(d + 1)
+        str_repr += "|  " * d + "└──────\n"
+        return str_repr
+
+    def __str__(self) -> str:
+        return self._print_with_depth(0)
+
 
 class MarkdownTreeProcessor:
-    def __init__(self, root_path: str, output_path: str, global_config: Config):
-        self.root_path = root_path
-        self.output_path = output_path
-        self.global_config = global_config
+    def __init__(self, project_config: ProjectConfig):
+        self.project_config = project_config
+        self.src_root = (
+            project_config.src_root
+            if os.path.isabs(project_config.src_root)
+            else f"{project_config.root}/{project_config.src_root}"
+        )
+        self.public_root = (
+            project_config.public_root
+            if os.path.isabs(project_config.public_root)
+            else f"{project_config.root}/{project_config.public_root}"
+        )
         self._process()
 
     def _process(self):
-        self.tree = self._read_tree(self.root_path)
+        logging.info("Reading tree...")
+        self.tree = self._read_tree(self.src_root)
+        logging.info("Reading markdown files...")
         self._read_markdown(self.tree)
+        logging.info("Finding files to copy...")
         self._read_files_to_copy(self.tree)
+        logging.info("Building HTML pages...")
         self._make_pages(self.tree)
+        logging.info("Processing links...")
         self._decorate_pages(self.tree)
 
     def output(self):
@@ -168,7 +221,12 @@ class MarkdownTreeProcessor:
     def _read_tree(
         self, root_path: str, parent: Optional[MarkdownTreeNode] = None, name: str = ""
     ) -> MarkdownTreeNode:
-        tree = MarkdownTreeNode(name=name, parent=parent)
+        config_path = f"{root_path}/notes-folderrc.json"
+        if os.path.isfile(config_path):
+            config = FolderConfig.from_json_file(config_path)
+        else:
+            config = FolderConfig.default()
+        tree = MarkdownTreeNode(name=name, parent=parent, folder_config=config)
         for entry in os.scandir(root_path):
             if entry.is_dir():
                 tree.children.append(
@@ -181,7 +239,7 @@ class MarkdownTreeProcessor:
         . -> md
         """
         tree.content["markdown"] = []
-        for entry in os.scandir(f"{self.root_path}/{tree.path_from_root()}"):
+        for entry in os.scandir(f"{self.src_root}/{tree.path_from_root()}"):
             if entry.is_file() and entry.name.endswith(".md"):
                 stem = Path(entry.path).stem
                 with open(entry.path, "r") as file:
@@ -200,7 +258,20 @@ class MarkdownTreeProcessor:
         . -> pages
         """
         tree.content["copy"] = []
-        for entry in os.scandir(f"{self.root_path}/{tree.path_from_root()}"):
+
+        # Builtin files
+        if tree.parent is None:
+            for traversable in importlib.resources.files(
+                "notes_compiler.resources"
+            ).iterdir():
+                if str(traversable).endswith(".css"):
+                    with importlib.resources.as_file(traversable) as path:
+                        tree.content["copy"].append(
+                            {"path": path, "filename": os.path.basename(path)}
+                        )
+
+        # User-created files
+        for entry in os.scandir(f"{self.src_root}/{tree.path_from_root()}"):
             if entry.is_file() and not entry.name.endswith(".md"):
                 tree.content["copy"].append(
                     {"path": entry.path, "filename": entry.name}
@@ -212,6 +283,7 @@ class MarkdownTreeProcessor:
         """
         md -> pages
         """
+        logging.info(f"Building pages at {tree.path_from_root()}")
         tree.content["pages"] = []
         for md in tree.content["markdown"]:
             tree.content["pages"].append(
@@ -222,7 +294,7 @@ class MarkdownTreeProcessor:
                     "page": HtmlPage.from_markdown(
                         md=md["content"],
                         name=md["name"],
-                        css=self.global_config.css,
+                        css=self.project_config.css,
                         parent=tree,
                     ),
                 }
@@ -236,16 +308,19 @@ class MarkdownTreeProcessor:
         """
         pages -> pages
         """
-        tree.content["index"] = {
-            "name": "index",
-            "html_filename": "index.html",
-            "page": HtmlPage(
-                body=self._toc(tree),
-                name="index",
-                css=self.global_config.css,
-                parent=tree,
-            ),
-        }
+        if tree.folder_config.build_index:
+            tree.content["index"] = {
+                "name": "index",
+                "html_filename": "index.html",
+                "page": HtmlPage(
+                    body=self._toc(tree),
+                    name="index",
+                    css=self.project_config.css,
+                    parent=tree,
+                ),
+            }
+        else:
+            tree.content["index"] = None
         for i, page in enumerate(tree.content["pages"]):
             if i > 0:
                 page["page"].page_before = tree.content["pages"][i - 1]["page"]
@@ -255,7 +330,7 @@ class MarkdownTreeProcessor:
             self._decorate_pages(child)
 
     def _sync_directories(self, tree: MarkdownTreeNode):
-        full_path = f"{self.output_path}/{tree.path_from_root()}"
+        full_path = f"{self.public_root}/{tree.path_from_root()}"
         if not os.path.exists(full_path):
             os.makedirs(full_path)
         for child in tree.children:
@@ -268,14 +343,15 @@ class MarkdownTreeProcessor:
         for child in tree.children:
             self._write_html_tree(child)
 
-        with open(
-            f"{self.output_path}/{tree.path_from_root()}/{tree.content['index']['html_filename']}",
-            "w",
-        ) as f:
-            f.write(tree.content["index"]["page"].build_page())
+        if tree.folder_config.build_index:
+            with open(
+                f"{self.public_root}/{tree.path_from_root()}/{tree.content['index']['html_filename']}",
+                "w",
+            ) as f:
+                f.write(tree.content["index"]["page"].build_page())
         for page in tree.content["pages"]:
             with open(
-                f"{self.output_path}/{tree.path_from_root()}/{page['html_filename']}",
+                f"{self.public_root}/{tree.path_from_root()}/{page['html_filename']}",
                 "w",
             ) as f:
                 f.write(page["page"].build_page())
@@ -289,7 +365,7 @@ class MarkdownTreeProcessor:
         for copy in tree.content["copy"]:
             shutil.copyfile(
                 copy["path"],
-                f"{self.output_path}/{tree.path_from_root()}/{copy['filename']}",
+                f"{self.public_root}/{tree.path_from_root()}/{copy['filename']}",
             )
 
     def _toc(self, tree: MarkdownTreeNode) -> str:
@@ -300,10 +376,13 @@ class MarkdownTreeProcessor:
         def make_toc(tree: MarkdownTreeNode, root: MarkdownTreeNode) -> str:
             toc_str = "<ul>\n"
             for child in tree.children:
-                path_to_index = (
-                    f"{tree.path_to_root()}/{child.path_from_root()}/index.html"
-                )
-                toc_str += f'<li><a href="{path_to_index}">{snake_case_to_title_case(child.name)}</a>\n{make_toc(child, root)}</li>'
+                if child.folder_config.build_index:
+                    path_to_index = (
+                        f"{tree.path_to_root()}/{child.path_from_root()}/index.html"
+                    )
+                    toc_str += f'<li><a href="{path_to_index}">🗁 {snake_case_to_title_case(child.name)}</a>\n{make_toc(child, root)}</li>'
+                else:
+                    toc_str += f"<li>🗁 {snake_case_to_title_case(child.name)}\n{make_toc(child, root)}</li>"
             for page in tree.content["pages"]:
                 toc_str += f'<li><a href="{root.path_to_root()}/{tree.path_from_root()}/{page["html_filename"]}">{snake_case_to_title_case(page["name"])}</a></li>\n'
             toc_str += "</ul>"
@@ -320,26 +399,20 @@ class MarkdownTreeProcessor:
 def main():
     setup_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_path", type=str, default="./src")
-    parser.add_argument("output_path", type=str, default="./public")
+    parser.add_argument("path", type=str, default=".")
     args = parser.parse_args()
 
-    json_config_path = f"{args.input_path}/notes-config.json"
-    if os.path.exists(json_config_path) and os.path.isfile(json_config_path):
-        config = Config.from_json(json_config_path)
+    json_config_path = find_file_upwards("notes-projectrc.json", args.path)
+    if json_config_path is not None:
+        logging.info(f"Loading configuration from JSON file: {json_config_path}")
+        config = ProjectConfig.from_json_file(json_config_path)
     else:
-        config = Config.default()
+        raise Exception(
+            "No notes-projectrc.json file found in target directory nor any of its parents."
+        )
 
-    tree_processor = MarkdownTreeProcessor(
-        args.input_path, args.output_path, global_config=config
-    )
-
+    tree_processor = MarkdownTreeProcessor(project_config=config)
     tree_processor.output()
-
-    for traversable in importlib.resources.files("notes_compiler.resources").iterdir():
-        if str(traversable).endswith(".css"):
-            with importlib.resources.as_file(traversable) as path:
-                shutil.copy(path, args.output_path)
 
 
 def snake_case_to_title_case(snake_case: str) -> str:
@@ -352,3 +425,14 @@ def setup_logging():
         style="{",
         format="[{levelname}({name}):{filename}:{funcName}] {message}",
     )
+
+
+def find_file_upwards(filename: str, dir: str = ".") -> Optional[str]:
+    dir = os.path.abspath(dir)
+    for entry in os.scandir(dir):
+        if entry.is_file() and entry.name == filename:
+            return entry.path
+    if dir == "/":
+        return None
+    parent_dir = os.path.dirname(dir)
+    return find_file_upwards(filename, parent_dir)
