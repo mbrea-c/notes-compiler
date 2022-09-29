@@ -5,6 +5,7 @@ import markdown
 from markdown.extensions.codehilite import CodeHiliteExtension
 from functools import reduce
 from markdown_katex import KatexExtension
+from notes_compiler import VERSION
 import os
 import os.path
 import shutil
@@ -398,8 +399,11 @@ class MarkdownTreeProcessor:
 
 def main():
     setup_logging()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", type=str, default=".")
+    parser = argparse.ArgumentParser(prog="notes-compiler")
+    parser.add_argument("path", type=str, default=".", nargs="?")
+    parser.add_argument(
+        "-V", "--version", action="version", version=f"%(prog)s {VERSION}"
+    )
     args = parser.parse_args()
 
     json_config_path = find_file_upwards("notes-projectrc.json", args.path)
