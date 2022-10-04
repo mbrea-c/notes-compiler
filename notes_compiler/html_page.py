@@ -6,6 +6,11 @@ from pymdownx.arithmatex import arithmatex_fenced_format, arithmatex_inline_form
 from pymdownx.highlight import HighlightExtension
 from pymdownx.superfences import SuperFencesCodeExtension
 from pymdownx.inlinehilite import InlineHiliteExtension
+from markdown.extensions.def_list import DefListExtension
+from markdown.extensions.footnotes import FootnoteExtension
+from markdown.extensions.tables import TableExtension
+from markdown.extensions.toc import TocExtension
+from markdown.extensions.meta import MetaExtension
 from notes_compiler.tree_node import MarkdownTreeNode
 from notes_compiler.utils import snake_case_to_title_case
 
@@ -39,6 +44,11 @@ class HtmlPage:
             md,
             tab_length=2,
             extensions=[
+                DefListExtension(),
+                FootnoteExtension(),
+                TableExtension(),
+                TocExtension(),
+                MetaExtension(),
                 HighlightExtension(),
                 SuperFencesCodeExtension(
                     custom_fences=[
