@@ -229,7 +229,7 @@ class MarkdownTreeProcessor:
                     )
                     toc_str += f'<li><a href="{path_to_index}">🗁 {snake_case_to_title_case(child.name)}</a>\n{make_toc(child, root)}</li>'
                 else:
-                    toc_str += f"<li>🗁 {snake_case_to_title_case(child.name)}\n{make_toc(child, root)}</li>"
+                    toc_str += f'<details><summary class="toc-summary">{snake_case_to_title_case(child.name)}</summary>\n{make_toc(child, root)}</details>'
             for page in tree.content["pages"]:
                 toc_str += f'<li><a href="{root.path_to_root()}/{tree.path_from_root()}/{page["html_filename"]}">{snake_case_to_title_case(page["name"])}</a></li>\n'
             toc_str += "</ul>"
