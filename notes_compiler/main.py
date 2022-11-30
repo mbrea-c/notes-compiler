@@ -2,6 +2,9 @@ import argparse
 from subprocess import PIPE, Popen
 from typing import Optional
 from pathlib import Path
+from time import sleep
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from notes_compiler import VERSION
 import os
 import os.path
@@ -243,10 +246,20 @@ class MarkdownTreeProcessor:
         return toc_str
 
 
+class RecompileEventHandler(FileSystemEventHandler):
+    def __init__(self):
+        super().__init__()
+        self.should_compile = True
+
+    def on_any_event(self, _):
+        self.should_compile = True
+
+
 def main():
     setup_logging()
     parser = argparse.ArgumentParser(prog="notes-compiler")
     parser.add_argument("path", type=str, default=".", nargs="?")
+    parser.add_argument("-w", "--watch", action='store_true')
     parser.add_argument(
         "-V", "--version", action="version", version=f"%(prog)s {VERSION}"
     )
@@ -260,6 +273,21 @@ def main():
         raise Exception(
             "No notes-projectrc.json file found in target directory nor any of its parents."
         )
+
+    if args.watch:
+        event_handler = RecompileEventHandler()
+        observer = Observer()
+        observer.schedule(event_handler, config.root, recursive=False)
+        observer.schedule(event_handler, f"{config.root}/{config.src_root}", recursive=True)
+        observer.start()
+
+        while True:
+            if event_handler.should_compile:
+                event_handler.should_compile = False
+
+                tree_processor = MarkdownTreeProcessor(project_config=config)
+                tree_processor.output()
+            sleep(0.1)
 
     tree_processor = MarkdownTreeProcessor(project_config=config)
     tree_processor.output()

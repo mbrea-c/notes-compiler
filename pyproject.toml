@@ -15,6 +15,7 @@ markdown-katex = "^202112.1034"
 python3-markdown-extension-graphviz = "^0.1.0"
 Pygments = "^2.13.0"
 pymdown-extensions = "^9.5"
+watchdog = "^2.1.9"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
