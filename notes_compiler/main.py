@@ -234,7 +234,7 @@ class MarkdownTreeProcessor:
                 else:
                     toc_str += f'<details><summary class="toc-summary">{snake_case_to_title_case(child.name)}</summary>\n{make_toc(child, root)}</details>'
             for page in tree.content["pages"]:
-                toc_str += f'<li><a href="{root.path_to_root()}/{tree.path_from_root()}/{page["html_filename"]}">{snake_case_to_title_case(page["name"])}</a></li>\n'
+                toc_str += f'<li class="file"><a href="{root.path_to_root()}/{tree.path_from_root()}/{page["html_filename"]}">{snake_case_to_title_case(page["name"])}</a></li>\n'
             toc_str += "</ul>"
             return toc_str
 
@@ -259,7 +259,7 @@ def main():
     setup_logging()
     parser = argparse.ArgumentParser(prog="notes-compiler")
     parser.add_argument("path", type=str, default=".", nargs="?")
-    parser.add_argument("-w", "--watch", action='store_true')
+    parser.add_argument("-w", "--watch", action="store_true")
     parser.add_argument(
         "-V", "--version", action="version", version=f"%(prog)s {VERSION}"
     )
@@ -278,7 +278,9 @@ def main():
         event_handler = RecompileEventHandler()
         observer = Observer()
         observer.schedule(event_handler, config.root, recursive=False)
-        observer.schedule(event_handler, f"{config.root}/{config.src_root}", recursive=True)
+        observer.schedule(
+            event_handler, f"{config.root}/{config.src_root}", recursive=True
+        )
         observer.start()
 
         while True:
